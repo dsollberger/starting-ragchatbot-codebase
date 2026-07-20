@@ -5,7 +5,7 @@ const API_URL = '/api';
 let currentSessionId = null;
 
 // DOM elements
-let chatMessages, chatInput, sendButton, totalCourses, courseTitles;
+let chatMessages, chatInput, sendButton, totalCourses, courseTitles, newChatButton;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton = document.getElementById('sendButton');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
-    
+    newChatButton = document.getElementById('newChatButton');
+
     setupEventListeners();
     createNewSession();
     loadCourseStats();
@@ -38,6 +39,9 @@ function setupEventListeners() {
             sendMessage();
         });
     });
+
+    // New chat
+    newChatButton.addEventListener('click', createNewSession);
 }
 
 
@@ -50,6 +54,7 @@ async function sendMessage() {
     chatInput.value = '';
     chatInput.disabled = true;
     sendButton.disabled = true;
+    newChatButton.disabled = true;
 
     // Add user message
     addMessage(query, 'user');
@@ -91,6 +96,7 @@ async function sendMessage() {
     } finally {
         chatInput.disabled = false;
         sendButton.disabled = false;
+        newChatButton.disabled = false;
         chatInput.focus();
     }
 }
@@ -122,10 +128,18 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     let html = `<div class="message-content">${displayContent}</div>`;
     
     if (sources && sources.length > 0) {
+        const sourcesHtml = sources.map(source => {
+            const label = escapeHtml(source.text);
+            if (source.link) {
+                return `<a href="${escapeHtml(source.link)}" target="_blank" rel="noopener noreferrer" class="source-link">${label}</a>`;
+            }
+            return `<span class="source-plain">${label}</span>`;
+        }).join(', ');
+
         html += `
             <details class="sources-collapsible">
                 <summary class="sources-header">Sources</summary>
-                <div class="sources-content">${sources.join(', ')}</div>
+                <div class="sources-content">${sourcesHtml}</div>
             </details>
         `;
     }
@@ -147,9 +161,30 @@ function escapeHtml(text) {
 // Removed removeMessage function - no longer needed since we handle loading differently
 
 async function createNewSession() {
-    currentSessionId = null;
+    newChatButton.disabled = true;
+    try {
+        const response = await fetch(`${API_URL}/session/new`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ session_id: currentSessionId })
+        });
+
+        if (!response.ok) throw new Error('Failed to start new session');
+
+        const data = await response.json();
+        currentSessionId = data.session_id;
+    } catch (error) {
+        console.error('Error creating new session:', error);
+        currentSessionId = null;
+    }
+
+    chatInput.value = '';
     chatMessages.innerHTML = '';
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+    newChatButton.disabled = false;
+    chatInput.focus();
 }
 
 // Load course statistics
