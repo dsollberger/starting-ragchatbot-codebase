@@ -96,3 +96,49 @@ def app_client():
         yield TestClient(fastapi_app)
     finally:
         os.chdir(original_cwd)
+
+
+@pytest.fixture
+def mock_rag_system(mocker):
+    """
+    RAGSystem double with sensible defaults, for deterministic endpoint tests.
+
+    Not autospec'd: RAGSystem.session_manager is an instance attribute assigned in __init__
+    (not visible on the class), so mocker.create_autospec(RAGSystem, instance=True) can't see
+    it and raises AttributeError on access. A plain MagicMock allows it while still matching
+    the attributes app.py actually calls (.query, .session_manager.*, .get_course_analytics).
+    """
+    mock = mocker.MagicMock()
+    mock.session_manager.create_session.return_value = "test_session_1"
+    mock.query.return_value = (
+        "This is a test answer.",
+        [{"text": "Course A - Lesson 1", "link": "https://example.com/lesson1"}],
+    )
+    mock.get_course_analytics.return_value = {
+        "total_courses": 2,
+        "course_titles": ["Course A", "Course B"],
+    }
+    return mock
+
+
+@pytest.fixture
+def client(mock_rag_system):
+    """
+    TestClient for the real FastAPI app with its global `rag_system` swapped for a mock.
+
+    Same chdir workaround as `app_client` (see its docstring), so the real static-file mount
+    still resolves. Unlike `app_client`, requests here never reach the real ChromaDB or the
+    Anthropic API, so endpoint tests can assert exact request/response contracts quickly and
+    deterministically. Use `mock_rag_system` to control what the endpoints see per test.
+    """
+    original_cwd = os.getcwd()
+    os.chdir(BACKEND_DIR)
+    try:
+        if str(BACKEND_DIR) not in sys.path:
+            sys.path.insert(0, str(BACKEND_DIR))
+        import app as app_module
+        app_module.rag_system = mock_rag_system
+        from fastapi.testclient import TestClient
+        yield TestClient(app_module.app)
+    finally:
+        os.chdir(original_cwd)
