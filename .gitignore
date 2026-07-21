@@ -20,6 +20,9 @@ backend/chroma_db/
 # Uploads
 uploads/
 
+# Node (frontend tooling)
+node_modules/
+
 # IDE
 .vscode/
 .idea/
